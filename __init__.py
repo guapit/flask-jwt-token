@@ -17,7 +17,7 @@ EdDSA - Both Ed25519 signature using SHA-512 and Ed448 signature using SHA-3 are
 """
 from json import JSONEncoder
 
-import jwt,uuid
+import jwt,uuid,pytz
 from datetime import datetime,timezone,timedelta
 import time
 # from pprint import pprint
@@ -68,7 +68,7 @@ class JwtToken:
         self.expiration:Optional[int] = 5 # Token临时到期时间
         self.expiration_max:Optional[int] = 7 # Token最大有效期
         self.is_uuid:Optional[bool] = False # 是否需要加盐
-        self.utc:Optional[timezone] = None # 设置时区
+        self.utc:Optional[str] = 'UTC' # 设置时区 中国时区 'Asia/Shanghai'
         self.kid: str = None # 前后端共享公钥
         self.require: List[str] = None # 解密后过滤器,可以选择返回指定字段信息
         self.active_expiration:Optional[datetime] = None # 设置Token什么时间内无法使用
@@ -89,15 +89,11 @@ class JwtToken:
             playload['aud'] = self.address
         playload['pal'] = data
         if self.utc:
-            playload['exp'] = datetime.now(tz=self.utc) + timedelta(seconds=self.expiration)
-            playload['iat'] = datetime.now(tz=self.utc)
-            playload['exm'] = time.mktime(datetime.now(tz=timezone.utc).timetuple()) + self.expiration_max * 86400
-            playload['nbf'] = datetime.now(tz=self.utc)
-        else:
-            playload['exp'] = datetime.now() + timedelta(seconds=self.expiration) 
-            playload['iat'] = datetime.now()
-            playload['exm'] = time.time() + self.expiration_max  * 86400
-            playload['nbf'] = datetime.now()
+            playload['exp'] = datetime.now(tz=pytz.timezone(self.utc)) + timedelta(seconds=self.expiration)
+            playload['iat'] = datetime.now(tz=pytz.timezone(self.utc))
+            playload['exm'] = time.mktime(datetime.now(tz=pytz.timezone(self.utc)).timetuple()) + self.expiration_max * 86400
+            playload['nbf'] = datetime.now(pytz.timezone(self.utc))
+
         if self.active_expiration:
                 playload['nbf'] = self.active_expiration
         playload_val = PlayLoad(**playload)
@@ -115,7 +111,7 @@ class JwtToken:
         :return: 验证数据合法后返回过滤后的 playload 对象    
         """
         state,data,msg = palyload
-        _data_copy = PlayLoad(**data).dict()
+        _data_copy = data
         # pprint(_data_copy)
         in118 = []
         in118.append('crypto' if language == "en" else '加密算法')
@@ -129,15 +125,16 @@ class JwtToken:
         in118.append('expiration_stop' if language == "en" else '主动过期')
         in118.append('data' if language == "en" else '解密数据')
         _data = {}
+        # pprint(_data_copy.get('iat',None))
         _data[in118[0]] = _data_copy.get('alg',None)
         _data[in118[1]] = _data_copy.get('typ',None)
         _data[in118[2]] = _data_copy.get('aud',None)
-        _data[in118[3]] = int(time.mktime(_data_copy.get('iat',None).timetuple()))
-        _data[in118[4]] =  int(time.mktime(_data_copy.get('exp',None).timetuple()))
+        _data[in118[3]] = _data_copy.get('iat',None)
+        _data[in118[4]] = _data_copy.get('exp',None)
         _data[in118[5]] = _data_copy.get('exm',None)
         _data[in118[6]] = _data_copy.get('iss',None)
         _data[in118[7]] = _data_copy.get('iti',None)
-        _data[in118[8]] = None if _data_copy.get('nbf',None) == None else int(time.mktime(_data_copy.get('nbf').timetuple()))
+        _data[in118[8]] = _data_copy.get('nbf',None)
         _data[in118[9]] = _data_copy.get('pal',None)
         if require:
             for req in require:
@@ -168,13 +165,15 @@ class JwtToken:
         """
         加密底层接口,请勿乱动!
         """
-        _headers = self.set_headers(headers)
-        playload = self.create_playload(data)
+        try:
+            _headers = self.set_headers(headers)
+            playload = self.create_playload(data)
+            _token = jwt.encode(playload,key=key,algorithm=self.crypto,headers=_headers,
+                                json_encoder=json_encoder)
 
-        _token = jwt.encode(playload,key=key,algorithm=self.crypto,headers=_headers,
-                            json_encoder=json_encoder)
-
-        return _token
+            return _token
+        except Exception as e:
+            raise e
     
     def encode(self,data:dict = {},headers:dict = None,json_encoder: Type[JSONEncoder] | None = None) -> str:
         """
@@ -232,7 +231,7 @@ class JwtToken:
             return False, {}, "Token令牌无效"   
         
     def decode_complete(self,encode_key:str,address:List[str]|str=None,issue:str = None,leeway:Union[int, float, timedelta] = 0) -> tuple[bool, dict, str]:
-        # pprint(self.key)
+        """不经过任何数据处理,返回完整的解密后数据, 不建议在开发中使用, 只供查阅完整解密信息"""
         return jwt.api_jwt.decode_complete(encode_key,key=self.key,algorithms=self.crypto,address=address,issue=issue,leeway=leeway)
     
     def decode(self,encode_key:str,address:List[str]|str=None,issue:str = None,leeway:Union[int, float, timedelta] = 0) -> tuple[bool, dict, str]:
@@ -258,7 +257,7 @@ class JwtToken:
         :param data: 需要加密的信息数据
         :param headers: 如果需要在荷载信息头部加入定制信息可以传入字典
         :param json_encoder: 自定义json解析接口(一般无需设置)
-        :return: 验证数据合法后返回Token密文
+        :return: 验证数据合法后返回 playload 对象
         
         """
         _token = self.__base_encode(data,key=self.private_key,headers=headers, json_encoder=json_encoder)
@@ -290,7 +289,7 @@ class JwtToken:
         :param data: 需要加密的信息数据
         :param headers: 如果需要在荷载信息头部加入定制信息可以传入字典
         :param json_encoder: 自定义json解析接口(一般无需设置)
-        :return: 验证数据合法后返回Token密文
+        :return: 验证数据合法后返回 playload 对象
         
         """
         with open(self.private_file,'rb') as f:
@@ -319,26 +318,25 @@ class JwtToken:
 
     
     
-    
 # if __name__ in '__main__':
 #     jt = JwtToken()
 #     jt.key = "flask-pyticks-n%!j-fbgn98k4rrsrf*t%tgus^vsd5!p6#7(u82oau!*a3x2!l"
 #     jt.crypto = 'HS256'
-#     jt.utc = timezone.utc
 #     user = {'id':1,'username':'guapit'}
     
 #     # playload = jt.create_playload()
     
-    # encode = jt.encode(user)
+#     encode = jt.encode(user)
 #     # pprint(encode)
 #     # pprint(jt.key)
 #     # encode_key = 'eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiIsImlzcyI6bnVsbCwiaXRpIjpudWxsLCJhdWQiOm51bGwsInBhbCI6eyJpZCI6MSwidXNlcm5hbWUiOiJndWFwaXQifSwiZXhwIjoxNjc1Nzg1NTEwLCJleG0iOjE2NzYzNjE1MDUsImlhdCI6MTY3NTc4NTUwNSwibmJmIjoxNjc1Nzg1NTA1fQ.zqG8IYh6qEkgemRNY0WSJhFkrnIHCqIWpGoNtF-jmh1zadb2TZCu2Y7eriZ58DlbhVO2YBbwaqynD9r_DacsUw'
 #     # jt.key = "flask-pytic515ks-n%!j-fbgn98k4rrsrf*t%tgus^vsd5!p6#7(u82oau!*a3"
 #     # pprint(jt.key)
-    # decode = jt.decode(encode)
-    # pprint(decode)
-#     decode = jt.get_playload(decode,language="en",require=["address",'type','crypto','issuer'])
-#     # com = jt.decode_complete(encode)
+#     decode = jt.decode(encode)
 #     pprint(decode)
+#     # decode = jt.get_playload(decode,language="en",require=["address",'type','crypto','issuer'])
+#     # com = jt.decode_complete(encode)
+#     # pprint(decode)
 
+    
     
