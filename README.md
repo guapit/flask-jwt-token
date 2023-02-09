@@ -11,6 +11,7 @@
 </p><br>
 
 
+
    This is a highly scalable `token` authentication system developed based on the `PyJWT` plug-in. It can be used simply,  and the encryption method can be customized arbitrarily. It supports password encryption,  private key public key encryption, private key public key file encryption
 Whether you are django, Flask, Fastapi or software application authorization,  you can use it to achieve application layer decoupling
 
