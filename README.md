@@ -11,7 +11,8 @@
 </p><br>
 
 
- This is an auto-register routing plugin based on the 'Flask' framework, developed according to the 'flask_restful' specification, you only need to configure the view file, you can automatically register the routing system, if you encounter Debug or problems, please contact me through the above contact information
+   This is a highly scalable `token` authentication system developed based on the `PyJWT` plug-in. It can be used simply,  and the encryption method can be customized arbitrarily. It supports password encryption,  private key public key encryption, private key public key file encryption
+Whether you are django, Flask, Fastapi or software application authorization,  you can use it to achieve application layer decoupling
 
 这是一个基于 `PyJWT`插件开发的高可扩展的`token`认证系统,可以简单的使用,也可以任意定制加密方式,支持 密码加密, 私钥公钥加密,私钥公钥文件加密
 无论你是 django, Flask, Fastapi还是软件应用授权都可以使用,实现应用层解耦
@@ -21,6 +22,7 @@ Required plugins 必要的插件
 ```pthon
 pip install -U pyjwt
 pip install -U pydantic
+pip install -U pytz
 ```
 
 ## pip安装
@@ -118,6 +120,53 @@ crypto,type,address,create_time,expiration,expiration_max,issuer,issuer,uuid,act
 :param headers: 需要加密的信息数据
 
 :return: 返回更新后的headers信息
+
+### def get_playload(self,palyload:tuple[bool, dict, str],require:List[str]=None,language:str="en") ->tuple[bool, dict, str]
+
+格式化解密后的结果
+
+English Fields:
+    crypto,type,address,create_time,expiration,expiration_max,issuer,issuer,uuid,active_exp,pal
+中文字段:
+    加密算法,加盐类型,可访问者,创建时间,到期时间,到期上限,发布者,唯一识别码,主动过期,解密数据
+:param palyload: 荷载对象
+:param require: 过滤掉不需要返回的字段,参考上面的字段名称
+:param language: 设置语言版本 en | cn
+:return: 验证数据合法后返回过滤后的 playload 对象 
+
+使用方法:
+
+```python
+decode = jt.get_playload(decode,language="cn",require=["address",'type','crypto','issuer'])
+```
+
+ English:
+
+```json
+(True,
+ {'create_time': 1675960891,
+  'data': {'id': 1, 'username': 'guapit'},
+  'expiration': 1675961391,
+  'expiration_max': 1676565691,
+  'expiration_stop': 1675960891,
+  'uuid': None},
+ 'Token令牌获取成功')
+```
+
+中文:
+
+```json
+(True,
+ {'主动过期': 1675961064,
+  '创建时间': 1675961064,
+  '到期上限': 1676565864,
+  '到期时间': 1675961564,
+  '唯一识别码': None,
+  '解密数据': {'id': 1, 'username': 'guapit'}},
+ 'Token令牌获取成功')
+```
+
+
 
 ### def encode(self,data:dict = {},headers:dict = None,json_encoder: Type[JSONEncoder] | None = None)
 
